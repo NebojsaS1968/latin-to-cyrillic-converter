@@ -1,0 +1,14 @@
+doctype html
+html
+  head
+    title File Upload
+    link(rel="stylesheet", href="/styles.css")
+  body
+    .container
+      h1 Upload a File
+      form(action="/upload" method="POST" enctype="multipart/form-data")
+        input(type="file" name="file" required)
+        button(type="submit") Upload
+    if message
+      p.message= message
+
