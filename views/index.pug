@@ -1,14 +1,190 @@
 doctype html
-html
+html(lang="sr")
   head
-    title File Upload
-    link(rel="stylesheet", href="/styles.css")
+    meta(charset="UTF-8")
+    meta(name="viewport", content="width=device-width, initial-scale=1.0")
+    title Konverzija – Ћирилица / Latinica
+    link(rel="icon" type="image/png" href="/cirilica.png")
+    style.
+      body {
+        font-family: 'Segoe UI', sans-serif;
+        background: linear-gradient(135deg, #f0f4f8, #dbe2ef);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        height: 100vh;
+        margin: 0;
+      }
+      .container {
+        background: white;
+        padding: 2rem 3rem 2.5rem;
+        border-radius: 14px;
+        box-shadow: 0 6px 16px rgba(0,0,0,0.1);
+        text-align: center;
+        width: 420px;
+        position: relative;
+      }
+      .tabs {
+        display: flex;
+        justify-content: center;
+        margin-bottom: 1.5rem;
+        border-bottom: 1px solid #eee;
+      }
+      .tab {
+        flex: 1;
+        padding: 0.8rem 0;
+        cursor: pointer;
+        font-weight: 500;
+        color: #666;
+        transition: all 0.2s ease;
+      }
+      .tab.active {
+        color: #0078d7;
+        border-bottom: 3px solid #0078d7;
+      }
+      h1 {
+        font-size: 1.6rem;
+        margin-bottom: 1.2rem;
+        color: #222;
+      }
+      form {
+        display: flex;
+        flex-direction: column;
+        gap: 1rem;
+      }
+      input[type="file"] {
+        display: none;
+      }
+      .file-label {
+        display: inline-block;
+        background-color: #0078d7;
+        color: white;
+        padding: 0.7rem 1rem;
+        border-radius: 8px;
+        cursor: pointer;
+        font-size: 1rem;
+        transition: background-color 0.2s ease;
+      }
+      .file-label:hover {
+        background-color: #005fa3;
+      }
+      .file-name {
+        margin-top: 0.5rem;
+        font-size: 0.9rem;
+        color: #555;
+        font-style: italic;
+      }
+      .radio-group {
+        display: flex;
+        flex-direction: column;
+        align-items: flex-start;
+        gap: 0.6rem;
+        margin: 0.8rem 0 1rem;
+      }
+
+      .radio-option {
+        display: flex;
+        align-items: center;
+        gap: 0.5rem;
+        font-size: 1rem;
+        color: #333;
+        cursor: pointer;
+      }
+
+      .radio-option input[type="radio"] {
+        accent-color: #0078d7;
+        width: 18px;
+        height: 18px;
+        cursor: pointer;
+      }
+      button {
+        background-color: #009688;
+        color: white;
+        border: none;
+        padding: 0.7rem;
+        border-radius: 8px;
+        font-size: 1rem;
+        cursor: pointer;
+        transition: background-color 0.2s ease;
+      }
+      button:hover {
+        background-color: #00796b;
+      }
+      textarea {
+        width: 100%;
+        height: 180px;
+        border: 1px solid #ccc;
+        border-radius: 8px;
+        padding: 0.7rem;
+        font-size: 1rem;
+        resize: none;
+        font-family: 'Segoe UI', sans-serif;
+      }
+      .hidden {
+        display: none;
+      }
   body
     .container
-      h1 Upload a File
-      form(action="/upload" method="POST" enctype="multipart/form-data")
-        input(type="file" name="file" required)
-        button(type="submit") Upload
-    if message
-      p.message= message
+      h1 Ћирилица | Latinica
+      .tabs
+        div.tab.active(data-tab="upload") Fajl
+        div.tab(data-tab="text") Tekst
+      // File upload tab
+      .tab-content#upload-tab
+        h1 Otpremi fajl
+        form(action="/upload" method="POST" enctype="multipart/form-data")
+          label.file-label(for="file") Izaberi fajl
+          input#file(type="file" name="file" required onchange="document.querySelector('.file-name').textContent = this.files[0]?.name || 'Nijedan fajl nije izabran';")
+          p.file-name Nijedan fajl nije izabran
+          button(type="submit") Otpremi
+      // Text conversion tab
+      .tab-content.hidden#text-tab
+        h1 Konvertuj tekst
+        form(action="/convert-text" method="POST")
+          textarea(name="text" placeholder="Unesite tekst ovde..." required)
+          div.radio-group
+            label.radio-option
+              input(type="radio" name="direction" value="lat-to-cyr" checked)
+              span Latinica → Ћирилица
+            label.radio-option
+              input(type="radio" name="direction" value="cyr-to-lat")
+              span Ћирилица → Latinica
+          button(type="submit") Konvertuj
+    script.
+      // Tab switching logic
+      const tabs = document.querySelectorAll('.tab');
+      const contents = {
+        upload: document.getElementById('upload-tab'),
+        text: document.getElementById('text-tab')
+      };
+      tabs.forEach(tab => {
+        tab.addEventListener('click', () => {
+          tabs.forEach(t => t.classList.remove('active'));
+          tab.classList.add('active');
+          const selected = tab.dataset.tab;
+          for (const key in contents) {
+            contents[key].classList.toggle('hidden', key !== selected);
+          }
+        });
+      });
 
+      // Text conversion logic
+      document.querySelector('#text-tab form').addEventListener('submit', async e => {
+        e.preventDefault();
+        const form = e.target;
+        const formData = new FormData(form);
+        const data = Object.fromEntries(formData.entries());
+
+        const res = await fetch('/convert-text', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(data)
+        });
+
+        const result = await res.json();
+        if(result.convertedText) {
+          form.querySelector('textarea').value = result.convertedText;
+        } else {
+          alert(result.message);
+        }
+      });

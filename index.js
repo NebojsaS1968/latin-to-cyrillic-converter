@@ -4,15 +4,15 @@ const fs = require("fs");
 const path = require("path");
 const mammoth = require("mammoth");
 const morgan = require("morgan");
-const { PDFDocument, StandardFonts } = require("pdf-lib");
-const { convertLatinToCyrillic } = require("./converter");
-const { Document, Packer, Paragraph } = require("docx");
+const { Worker } = require("worker_threads");
 
 const app = express();
 app.use(morgan("dev"));
 app.set("view engine", "pug");
 app.set("views", path.join(__dirname, "views"));
 app.use(express.static("public"));
+app.use(express.urlencoded({ extended: true }));
+app.use(express.json());
 
 app.get("/", (req, res) => {
   res.render("index");
@@ -20,51 +20,64 @@ app.get("/", (req, res) => {
 
 const upload = multer({ dest: "uploads/" });
 app.post("/upload", upload.single("file"), async (req, res) => {
-  if (!req.file) return res.status(400).send("No file uploaded.");
+  if (!req.file) return res.status(400).send("Nijedan fajl nije otpremljen");
 
   const filePath = req.file.path;
   const fileExt = req.file.originalname.split(".").pop().toLowerCase();
-  const newFilePath = `converted_${req.file.originalname}`;
+  const originalName = req.file.originalname;
 
-  if (fileExt === "docx") {
-    const buffer = fs.readFileSync(filePath);
-    const { value } = await mammoth.extractRawText({ buffer });
-    const convertedText = convertLatinToCyrillic(value);
+  const worker = new Worker(path.join(__dirname, "workers/upload-worker.js"), {
+    workerData: { filePath, fileExt, originalName },
+  });
 
-    const doc = new Document({
-      sections: [
-        {
-          children: [new Paragraph(convertedText)],
-        },
-      ],
-    });
+  worker.on("message", (msg) => {
+    if (msg.success) {
+      res.download(msg.filePath, () => fs.unlinkSync(msg.filePath));
+    } else {
+      res.status(400).send(msg.error || "Konverzija neuspešna");
+    }
+  });
 
-    const docBuffer = await Packer.toBuffer(doc);
-    fs.writeFileSync(newFilePath, docBuffer);
-    fs.unlinkSync(filePath);
+  worker.on("error", (err) => {
+    console.error("Worker error:", err);
+    res.status(500).send("Interna greška na severu");
+  });
 
-    return res.download(newFilePath, () => fs.unlinkSync(newFilePath));
+  worker.on("exit", (code) => {
+    if (code !== 0) console.error(`Worker stopped with exit code ${code}`);
+  });
+});
+
+app.post("/convert-text", async (req, res) => {
+  const { text, direction } = req.body;
+
+  if (!text || !direction) {
+    return res.status(200).json({ message: "Tekst za konverziju ne postoji" });
   }
 
-  if (fileExt === "pdf") {
-    const existingPdfBytes = fs.readFileSync(filePath);
-    const pdfDoc = await PDFDocument.load(existingPdfBytes);
-    const pages = pdfDoc.getPages();
+  const worker = new Worker(
+    path.join(__dirname, "workers/convert-text-worker.js"),
+    {
+      workerData: { text, direction },
+    }
+  );
 
-    pages.forEach((page) => {
-      const text = page.getTextContent();
-      const convertedText = convertLatinToCyrillic(text);
-      page.drawText(convertedText, { font: StandardFonts.Helvetica });
-    });
+  worker.on("message", (msg) => {
+    if (msg.success) {
+      return res.status(200).json({ convertedText: msg.convertedText });
+    } else {
+      return res.status(400).send(msg.error || "Konverzija neuspešna");
+    }
+  });
 
-    const pdfBytes = await pdfDoc.save();
-    fs.writeFileSync(newFilePath, pdfBytes);
-    fs.unlinkSync(filePath);
+  worker.on("error", (err) => {
+    console.error("Worker error:", err);
+    res.status(500).send("Interna greška na severu");
+  });
 
-    return res.download(newFilePath, () => fs.unlinkSync(newFilePath));
-  }
-
-  return res.status(400).send("Unsupported file format.");
+  worker.on("exit", (code) => {
+    if (code !== 0) console.error(`Worker stopped with exit code ${code}`);
+  });
 });
 
 app.listen(3000, () => console.log("Server running on port 3000"));
